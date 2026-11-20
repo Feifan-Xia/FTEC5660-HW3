@@ -171,13 +171,84 @@ companies with the same tools and the same answer key rules, but different
 names and wording, and scores your 3 points only.
 
 ## Homework 3 solution:
-> to students: this is your report, see the homework description.
 
 ### My 3 points and rules
-> for each point: why you chose it, your PASS rule in one or two sentences, and the evidence it uses. Quote Fisher where it helps.
+
+I chose points 4, 7 and 11 because Fisher's scuttlebutt method gives direct,
+independent evidence for each one. Each point has a clear PASS/FAIL boundary,
+and one knowledgeable interview is enough under the homework rules. The agent
+uses three interviews per company. The model reads the three answers together
+and makes one structured assessment.
+
+| Point | Why I chose it | PASS rule | Evidence |
+| --- | --- | --- | --- |
+| **4. Above-average sales organization** | Fisher treats a strong sales organization as an operating advantage that financial statements alone cannot reveal. | PASS when sales staff know the product, advise the customer, respond to problems and maintain stable customer coverage. FAIL for order-taking, weak product knowledge, poor responsiveness or unstable contacts. | `interview("customer", "sales_team")` |
+| **7. Outstanding labour and personnel relations** | Fisher connects employee goodwill with productivity, retention and the company's ability to execute. | PASS when employees report fair pay, safety, retention and a constructive response to problems. FAIL for chronic overtime, low morale, high turnover, strikes or unfair treatment. | `interview("current_employee", "working_conditions")` |
+| **11. Advantage over competitors** | Fisher looks for industry-specific strengths that protect results from competition. | PASS when a competitor or customer identifies a durable advantage such as technology, know-how, installed base, service or repeat return after switching. FAIL when products are interchangeable or the only stated basis is price. | `interview("competitor", "competitive_edge")` |
+
+Fisher's point 11 asks about "other aspects of the business, somewhat peculiar
+to the industry involved" that reveal whether a company may be "outstanding
+in relation to its competition." The agent therefore requires evidence of a
+durable advantage, with product substitutability as the failing condition.
 
 ### Design
-> a visualization of your agent design and one paragraph describing it.
+
+```mermaid
+flowchart LR
+    A[Company folder<br/>four supplied tools] --> B[Router<br/>fixed Fisher-to-topic map]
+    B --> C[Point 4<br/>customer / sales_team]
+    B --> D[Point 7<br/>current employee / working_conditions]
+    B --> E[Point 11<br/>competitor / competitive_edge]
+    C --> F[Evidence bundle<br/>three verbatim interviews]
+    D --> F
+    E --> F
+    F --> G[ChatDeepSeek<br/>deepseek-v4-flash, temperature 0<br/>one structured assessment]
+    G --> H[JSON parser and validator<br/>all 3 verdicts required]
+    H -->|valid| I[PASS/FAIL verdicts<br/>short evidence-based summary]
+    H -->|invalid or API error| J[Deterministic semantic fallback<br/>company output still completes]
+    I --> K[results.csv]
+    J --> K
+```
+
+The agent routes each chosen Fisher point to the interview role that knows
+that topic. A company analysis therefore uses exactly three of its ten allowed
+interviews and one DeepSeek call. Up to five companies run concurrently. The
+model receives three verbatim transcripts and returns one JSON object with all
+three verdicts plus a short summary. A local validator checks the schema,
+verdict values and summary. If the API call or validation fails, a conservative
+semantic fallback still produces all three verdicts from the collected quotes,
+so one company cannot crash the full run.
 
 ### Results
-> your point score on `public_test`, the companies where your verdicts disagree with the public answers, and why.
+
+Three independent runs on the 20 public companies produced 60/60 correct
+verdicts each time, for a balanced point score of **100%** on every run. Every
+company used three interviews and no run needed the fallback path.
+
+| Run | Correct verdicts | Balanced point score | Interviews | Runtime |
+| --- | ---: | ---: | ---: | ---: |
+| 1 | 60/60 | 100% | 60 | 10.60 s |
+| 2 | 60/60 | 100% | 60 | 9.04 s |
+| 3 | 60/60 | 100% | 60 | 8.33 s |
+
+The final runs have no disagreements with `public_test/ground_truth.json`.
+During rule calibration, the first run scored 59/60. The one error was point 11
+for Juniper Industries: a competitor said customers who switched away
+"usually go back to them." I clarified in the system prompt that repeat return
+to a company is itself direct evidence of a durable advantage. The rerun
+classified that evidence correctly, and all subsequent full runs were 60/60.
+Per-run outputs are retained in `evaluation/`.
+
+### Reproducing and testing
+
+After activating the environment and creating `.env`, run:
+
+```bash
+python hw3.py --data-folder public_test
+python -m unittest discover -s tests -v
+```
+
+The first command calls `deepseek-v4-flash` and writes `results.csv`. The
+offline tests replace the model with a forced failure, verify that all company
+outputs still complete through the fallback, and check the key parsing and
+competitive-edge cases.
